@@ -1,42 +1,56 @@
 # Zana Configuration
 
-Configuration management for the Zana framework.
-
-## Features
-
-- **`ConfigurationInterface`** / **`ConfigurationRepository`** — hierarchical key-value store with dot-notation support
-- **`ArrayLoader`** — load configuration from PHP arrays
-- **`FileLoader`** — load configuration from PHP config files
-- **`EnvironmentLoader`** — load configuration from environment variables
-- **`ConfigurationException`** — typed error handling
-
-## Install
+Configuration from PHP files, `.env` files and environment variables, merged
+into one immutable tree, with typed accessors and `#[Config]` injection.
+Requires PHP 8.5 or later.
 
 ```
-composer require zana/configuration
+composer require mj-zana/configuration
 ```
 
 ## Usage
 
 ```php
-use Zana\Configuration\ConfigurationRepository;
-use Zana\Configuration\Loaders\ArrayLoader;
+use Zana\Configuration\{ConfigurationBuilder, DotEnv};
 
-$repo = new ConfigurationRepository();
-$repo->addLoader(new ArrayLoader(['app' => ['name' => 'Zana']]));
-$repo->set('database.host', '127.0.0.1');
+DotEnv::load(__DIR__ . '/.env');          // never overrides real environment variables
 
-echo $repo->get('app.name');      // Zana
-echo $repo->get('database.host'); // 127.0.0.1
+$config = (new ConfigurationBuilder())
+    ->addDirectory(__DIR__ . '/config')   // config/database.php → database.*
+    ->addEnvironment()                     // APP_DATABASE__HOST=db → database.host
+    ->build();
+
+$config->get('database.connections.main.host', 'localhost');
+$config->int('database.port');            // typed; throws on a missing key or wrong type
+$config->section('database')->all();
 ```
 
-## Testing
+Later sources win. Associative arrays merge recursively; lists and scalars are
+replaced whole. Environment values `true`, `false`, `null` and numbers are
+converted to their types.
 
+## Injection
+
+```php
+use Zana\Configuration\{Config, ConfigValueProvider};
+
+final class Mailer
+{
+    public function __construct(#[Config('mail.host')] private string $host, #[Config('mail.port')] private int $port = 25) {}
+}
+
+$services->addParameterProvider(new ConfigValueProvider($config));
 ```
-vendor/bin/phpunit packages/configuration/tests
+
+`zana/core` registers the provider automatically.
+
+## Caching
+
+```php
+ConfigurationCache::write($path, $config);   // atomic
+$config = ConfigurationCache::load($path) ?? $builder->build();
 ```
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
