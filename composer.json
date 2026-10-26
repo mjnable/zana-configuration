@@ -23,7 +23,7 @@
         }
     },
     "repositories": [
-        { "type": "path", "url": "../zana-container", "options": { "symlink": true, "versions": { "mj-zana/container": "2.3.0" } } }
+        { "type": "path", "url": "../zana-container", "options": { "symlink": true, "versions": { "mj-zana/container": "2.4.0" } } }
     ],
     "scripts": {
         "test": "phpunit",
