@@ -35,11 +35,19 @@ final readonly class Configuration implements ConfigurationInterface
         return $this->values;
     }
 
+    /**
+     * A string, or an int as text (an unquoted APP_* value made of digits).
+     * A float is refused: its text may have lost digits.
+     */
     public function string(string $key, ?string $default = null): string
     {
         $value = $this->required($key, $default);
 
-        return is_string($value) ? $value : throw ConfigurationException::type($key, 'a string', $value);
+        return match (true) {
+            is_string($value) => $value,
+            is_int($value) => (string) $value,
+            default => throw ConfigurationException::type($key, 'a string', $value),
+        };
     }
 
     public function int(string $key, ?int $default = null): int
@@ -64,11 +72,20 @@ final readonly class Configuration implements ConfigurationInterface
         };
     }
 
+    /**
+     * A bool, or the text "true", "false", "1" or "0" (any case): a quoted
+     * APP_* value stays text (FE-42).
+     */
     public function bool(string $key, ?bool $default = null): bool
     {
         $value = $this->required($key, $default);
 
-        return is_bool($value) ? $value : throw ConfigurationException::type($key, 'a bool', $value);
+        return match (true) {
+            is_bool($value) => $value,
+            is_string($value) && in_array(strtolower($value), ['true', '1'], true) => true,
+            is_string($value) && in_array(strtolower($value), ['false', '0'], true) => false,
+            default => throw ConfigurationException::type($key, 'a bool', $value),
+        };
     }
 
     public function array(string $key, ?array $default = null): array

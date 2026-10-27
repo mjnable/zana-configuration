@@ -22,7 +22,9 @@ interface ConfigurationInterface
     public function all(): array;
 
     /**
-     * @throws ConfigurationException If missing without default, or not a string
+     * A string, or an int as text.
+     *
+     * @throws ConfigurationException If missing without default, or not a string or an int
      */
     public function string(string $key, ?string $default = null): string;
 
@@ -41,7 +43,9 @@ interface ConfigurationInterface
     public function float(string $key, ?float $default = null): float;
 
     /**
-     * @throws ConfigurationException If missing without default, or not a bool
+     * A bool, or the text "true", "false", "1" or "0" (any case).
+     *
+     * @throws ConfigurationException If missing without default, or not one of those
      */
     public function bool(string $key, ?bool $default = null): bool;
 

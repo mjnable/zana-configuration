@@ -10,10 +10,17 @@ namespace Zana\Configuration;
  * Supports comments, blank lines, an "export " prefix, single-quoted values
  * (literal), double-quoted values (escapes and ${VAR} interpolation) and
  * unquoted values (${VAR} interpolation, " #" starts a comment).
+ *
+ * A quoted value is text (FE-42): the variables set from quoted values are
+ * remembered, and ConfigurationBuilder::addEnvironment() keeps them strings
+ * instead of converting "+243812345678" or "123456" to numbers.
  */
 final class DotEnv
 {
     private const NAME = '[A-Za-z_][A-Za-z0-9_.]*';
+
+    /** @var array<string, string> Variables this process set from quoted values, with those values */
+    private static array $quoted = [];
 
     /**
      * Load a file. Existing variables are kept unless $override is true.
@@ -31,7 +38,8 @@ final class DotEnv
             return [];
         }
 
-        $variables = self::parse((string) file_get_contents($path), $path);
+        $quoted = [];
+        $variables = self::parseLines((string) file_get_contents($path), $path, $quoted);
 
         foreach ($variables as $name => $value) {
             if (!$override && (getenv($name) !== false || array_key_exists($name, $_ENV))) {
@@ -41,9 +49,23 @@ final class DotEnv
             putenv("{$name}={$value}");
             $_ENV[$name] = $value;
             $_SERVER[$name] = $value;
+            if (isset($quoted[$name])) {
+                self::$quoted[$name] = $value;
+            } else {
+                unset(self::$quoted[$name]);
+            }
         }
 
         return $variables;
+    }
+
+    /**
+     * Whether a variable holds the value this process loaded for it from a quoted
+     * .env value: text, never converted to a number, bool or null.
+     */
+    public static function isQuoted(string $name, string $value): bool
+    {
+        return (self::$quoted[$name] ?? null) === $value;
     }
 
     /**
@@ -51,6 +73,18 @@ final class DotEnv
      * @throws ConfigurationException On a syntax error
      */
     public static function parse(string $contents, string $source = '.env'): array
+    {
+        $quoted = [];
+
+        return self::parseLines($contents, $source, $quoted);
+    }
+
+    /**
+     * @param array<string, true> $quoted Receives the names of the quoted values
+     * @return array<string, string>
+     * @throws ConfigurationException On a syntax error
+     */
+    private static function parseLines(string $contents, string $source, array &$quoted): array
     {
         $variables = [];
         $lines = preg_split('/\r\n|\n|\r/', $contents) ?: [];
@@ -71,6 +105,11 @@ final class DotEnv
             }
 
             $variables[$match[1]] = self::value($match[2], $variables, $source, $number);
+            if ($match[2] !== '' && ($match[2][0] === "'" || $match[2][0] === '"')) {
+                $quoted[$match[1]] = true;
+            } else {
+                unset($quoted[$match[1]]);
+            }
         }
 
         return $variables;

@@ -29,7 +29,7 @@ final readonly class ConfigValueProvider implements ParameterValueProviderInterf
         $key = $target->getAttributes(Config::class)[0]->newInstance()->key;
 
         if ($this->configuration->has($key)) {
-            return $this->configuration->get($key);
+            return $this->typed($key, $target->getType());
         }
 
         if ($target instanceof \ReflectionParameter && $target->isDefaultValueAvailable()) {
@@ -45,5 +45,26 @@ final readonly class ConfigValueProvider implements ParameterValueProviderInterf
         }
 
         throw ConfigurationException::missing($key);
+    }
+
+    /**
+     * The value through the typed reader of a scalar target type, so a quoted
+     * APP_* value (text) fills an int, float or bool parameter, and an unquoted
+     * number fills a string one (FE-42). Other types get the value as stored.
+     */
+    private function typed(string $key, ?\ReflectionType $type): mixed
+    {
+        $value = $this->configuration->get($key);
+        if (!$type instanceof \ReflectionNamedType || !$type->isBuiltin() || ($value === null && $type->allowsNull())) {
+            return $value;
+        }
+
+        return match ($type->getName()) {
+            'string' => $this->configuration->string($key),
+            'int' => $this->configuration->int($key),
+            'float' => $this->configuration->float($key),
+            'bool' => $this->configuration->bool($key),
+            default => $value,
+        };
     }
 }

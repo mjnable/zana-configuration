@@ -65,7 +65,8 @@ final class ConfigurationBuilder
 
     /**
      * Add environment variables starting with the prefix: APP_DATABASE__HOST
-     * becomes database.host. Values "true", "false", "null" and numbers are converted.
+     * becomes database.host. Values are converted (see convert()), except
+     * those DotEnv loaded from a quoted value, which stay strings (FE-42).
      */
     public function addEnvironment(string $prefix = 'APP_', string $separator = '__'): self
     {
@@ -78,7 +79,8 @@ final class ConfigurationBuilder
             }
 
             $path = strtolower(str_replace($separator, '.', substr($name, strlen($prefix))));
-            $values = self::merge($values, self::nest($path, self::convert((string) $raw)));
+            $raw = (string) $raw;
+            $values = self::merge($values, self::nest($path, DotEnv::isQuoted($name, $raw) ? $raw : self::convert($raw)));
         }
 
         $this->sources[] = $values;
@@ -143,15 +145,25 @@ final class ConfigurationBuilder
         return $result;
     }
 
+    /**
+     * An unquoted environment value: "true", "false" and "null" (any case)
+     * become their constants, integers and decimals become numbers. Values
+     * that are text even when made of digits stay strings (FE-42): a leading
+     * "+" (+243812345678), a leading zero (007, 0812), and integers longer
+     * than 15 digits, which a float would round.
+     */
     private static function convert(string $raw): mixed
     {
         return match (true) {
             strcasecmp($raw, 'true') === 0 => true,
             strcasecmp($raw, 'false') === 0 => false,
             strcasecmp($raw, 'null') === 0 => null,
+            str_starts_with($raw, '+'),
+            preg_match('/^-?0\d/', $raw) === 1,
+            preg_match('/^-?\d{16,}$/', $raw) === 1,
+            preg_match('/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/', $raw) !== 1 => $raw,
             preg_match('/^-?\d+$/', $raw) === 1 => (int) $raw,
-            is_numeric($raw) => (float) $raw,
-            default => $raw,
+            default => (float) $raw,
         };
     }
 }

@@ -3,6 +3,21 @@
 All Zana packages share one version number and are released together. A release that did
 not change this package is not listed.
 
+## 2.5.1 — unreleased
+
+### Fixed
+
+- A quoted `.env` value is always a string (FE-42). `DotEnv` remembers the variables it set from
+  quoted values, and `ConfigurationBuilder::addEnvironment()` no longer converts them: a phone number
+  such as `"+243812345678"` or an all-digit password no longer becomes a float that `string()` refuses.
+
+### Changed
+
+- Unquoted `APP_*` values with a leading `+` or `0`, or integers longer than 15 digits, stay strings.
+  Only plain integers and decimals (`24`, `-3`, `0.5`, `2e3`) become numbers.
+- `string()` returns an int as text; `bool()` accepts `"true"`, `"false"`, `"1"` and `"0"` (any case).
+- `#[Config]` injection converts the value to a `string`, `int`, `float` or `bool` parameter with the
+  typed readers.
 ## 2.4.0 — 2026-10-26
 
 ### Changed

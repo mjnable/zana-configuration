@@ -57,12 +57,12 @@ final class ConfigurationTest extends TestCase
 
     public function testTypedGettersRejectMissingKeysAndWrongTypes(): void
     {
-        $config = new Configuration(['s' => 'text', 'i' => 8]);
+        $config = new Configuration(['s' => 'text', 'i' => 8, 'f' => 1.5]);
 
         foreach ([
             [static fn () => $config->string('missing'), 'Configuration key "missing" is not set.'],
             [static fn () => $config->int('s'), 'Configuration key "s" should be an int, got string.'],
-            [static fn () => $config->string('i'), 'should be a string, got int'],
+            [static fn () => $config->string('f'), 'should be a string, got float'],
             [static fn () => $config->bool('i'), 'should be a bool'],
             [static fn () => $config->array('i'), 'should be an array'],
             [static fn () => $config->float('s'), 'should be a float'],
