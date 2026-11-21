@@ -51,6 +51,9 @@ ConfigurationCache::write($path, $config);   // atomic
 $config = ConfigurationCache::load($path) ?? $builder->build();
 ```
 
+The file is PHP, which `load()` runs. Pass a key to both (2.36) so that a file changed by anything but the
+application does not run: `ConfigurationCache::write($path, $config, $key)`, `ConfigurationCache::load($path, $key)`.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

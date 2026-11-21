@@ -189,4 +189,110 @@ final class ConfigurationTest extends TestCase
         $this->expectException(ConfigurationException::class);
         ConfigurationCache::load($this->temp->file('cache.php', '<?php return 42;'));
     }
+
+    // ── signed cache (2.36) ────────────────────────────────────────────────
+
+    private const string KEY = 'a-key-for-the-configuration-cache-0123456789';
+
+    public function testASignedCacheRoundTrips(): void
+    {
+        $this->temp = new TempDirectory();
+        $path = $this->temp->path . '/cache/config.php';
+        $config = new Configuration(['app' => ['name' => 'Zana', 'tags' => ['a']], 'debug' => null]);
+
+        ConfigurationCache::write($path, $config, self::KEY);
+
+        $this->assertMatchesRegularExpression('/\A<\?php\n\/\/ zana-signature: [0-9a-f]{64}\n/', (string) file_get_contents($path));
+        $this->assertEquals($config, ConfigurationCache::load($path, self::KEY));
+    }
+
+    public function testCodeAddedToASignedCacheDoesNotRun(): void
+    {
+        $path = $this->signedCache();
+        file_put_contents($path, preg_replace('/^(return )/m', "\$GLOBALS['zana_planted'] = true;\n\$1", (string) file_get_contents($path), 1));
+        unset($GLOBALS['zana_planted']);
+
+        try {
+            ConfigurationCache::load($path, self::KEY);
+            $this->fail('loaded');
+        } catch (ConfigurationException $e) {
+            $this->assertStringContainsString('does not carry the signature of this key', $e->getMessage());
+        }
+        $this->assertArrayNotHasKey('zana_planted', $GLOBALS);
+    }
+
+    public function testAnUnsignedCacheIsNotLoadedWithAKey(): void
+    {
+        $this->temp = new TempDirectory();
+        $path = $this->temp->path . '/config.php';
+        ConfigurationCache::write($path, new Configuration(['a' => 1]));
+        file_put_contents($path, preg_replace('/^(return )/m', "\$GLOBALS['zana_planted'] = true;\n\$1", (string) file_get_contents($path), 1));
+        unset($GLOBALS['zana_planted']);
+
+        $this->assertNull(ConfigurationCache::load($path, self::KEY), 'built and written again by the caller');
+        $this->assertArrayNotHasKey('zana_planted', $GLOBALS);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function forgeries(): iterable
+    {
+        yield 'another key' => ['key'];
+        yield 'one character of the signature changed' => ['changed'];
+        yield 'the file cut inside the signature line' => ['cut'];
+        yield 'the signature in capitals' => ['upper'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('forgeries')]
+    public function testForgedSignaturesAreRefused(string $forgery): void
+    {
+        $path = $this->signedCache();
+        $source = (string) file_get_contents($path);
+        if (preg_match('/\A<\?php\n\/\/ zana-signature: ([0-9a-f]{64})\n/', $source, $m) !== 1) {
+            $this->fail('not signed');
+        }
+        $mac = $m[1];
+        $key = self::KEY;
+        match ($forgery) {
+            'key' => $key = 'another-key-for-the-configuration-cache-0123',
+            'changed' => file_put_contents($path, str_replace($mac, ($mac[0] === 'a' ? 'b' : 'a') . substr($mac, 1), $source)),
+            'cut' => file_put_contents($path, "<?php\n// zana-signature: " . $mac),
+            default => file_put_contents($path, str_replace($mac, strtoupper($mac), $source)),
+        };
+
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessage('does not carry the signature of this key');
+        ConfigurationCache::load($path, $key);
+    }
+
+    public function testTheBytesCheckedAreTheBytesThatRun(): void
+    {
+        $this->temp = new TempDirectory();
+        $path = $this->temp->path . '/config.php';
+        $body = "\nreturn ['file' => __FILE__];\n";
+        file_put_contents($path, "<?php\n// zana-signature: " . hash_hmac('sha256', 'zana-configuration-cache|' . $body, self::KEY) . "\n" . $body);
+
+        $config = ConfigurationCache::load($path, self::KEY);
+
+        $this->assertNotNull($config);
+        $this->assertStringContainsString("eval()'d code", $config->string('file'), 'evaluated, not included after the check');
+    }
+
+    public function testAnEmptyKeyIsRefused(): void
+    {
+        $this->temp = new TempDirectory();
+
+        $this->expectException(\InvalidArgumentException::class);
+        ConfigurationCache::write($this->temp->path . '/config.php', new Configuration([]), '');
+    }
+
+    private function signedCache(): string
+    {
+        $this->temp = new TempDirectory();
+        $path = $this->temp->path . '/config.php';
+        ConfigurationCache::write($path, new Configuration(['app' => ['name' => 'Zana']]), self::KEY);
+
+        return $path;
+    }
 }

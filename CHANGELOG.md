@@ -3,6 +3,16 @@
 All Zana packages share one version number and are released together. A release that did
 not change this package is not listed.
 
+## 2.36.0 — Unreleased
+
+### Security
+
+- `ConfigurationCache::write()` and `load()` take an optional key. With it, the file is signed (HMAC-SHA256), and
+  `load()` runs only a file it signed, and runs the bytes it checked, so code added to the file, or a file swapped
+  after the check, does not run. A file without a signature is not loaded (`null`: build the configuration and write
+  it again); one with another signature is refused. Without a key, nothing changes. Applications built with core get
+  this from `withConfigurationCache()` since 2.35; this class is for configuration used without core.
+
 ## 2.5.1 — 2026-10-27
 
 ### Fixed
